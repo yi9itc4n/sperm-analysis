@@ -69,3 +69,4 @@ Render, Railway veya Heroku gibi platformlara deploy edebilirsiniz. Detaylı bil
 
 Bu proje akademik amaçlı geliştirilmiştir.
 
+

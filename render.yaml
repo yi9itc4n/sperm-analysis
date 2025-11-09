@@ -2,11 +2,15 @@ services:
   - type: web
     name: sperm-analysis
     env: python
-    buildCommand: pip install -r requirements.txt
+    # Git LFS kurulumu ve model dosyalarının indirilmesi için build command
+    buildCommand: pip install git-lfs && git lfs install && git lfs pull && pip install -r requirements.txt
     startCommand: gunicorn app:app
     envVars:
       - key: PYTHON_VERSION
         value: 3.11.0
       - key: PORT
         value: 10000
+    # Instance type: free, starter, standard
+    # Free tier için plan belirtmeye gerek yok, ücretli planlar için plan: starter veya plan: standard ekleyin
+
 
