@@ -146,16 +146,56 @@ Build işlemi sırasında:
 2. Fly CLI'yı yükleyin
 3. `fly launch` komutu ile deploy edin
 
-## Alternatif Çözüm: Model Dosyalarını Cloud Storage'dan İndirme
+## ⚠️ ÖNEMLİ: Model Dosyaları Cloud Storage'dan İndirilecek
 
-Eğer Git LFS ile sorun yaşarsanız, model dosyalarını cloud storage'a (Google Drive, Dropbox, AWS S3) yükleyip uygulama başlangıcında indirebilirsiniz.
+GitHub LFS budget aşıldığı için model dosyaları repository'den çıkarıldı. Model dosyaları build sırasında cloud storage'dan indirilecek.
 
-### Google Drive Kullanımı (Örnek)
+### Adım 1: Model Dosyalarını Google Drive'a Yükleme
 
-1. Model dosyalarını Google Drive'a yükleyin
-2. Paylaşım linklerini alın
-3. `download_models.py` scripti oluşturun (aşağıda örnek var)
-4. Build command'ı güncelleyin
+1. **Model dosyalarınızı Google Drive'a yükleyin:**
+   - `models/boya2best.pt` (6MB)
+   - `models/Boya2_Fold5_deit_base.pth` (327MB)
+   - `models/head/Head_DEiT_base_RMS_Boya2_Fold3_deit_base.pth` (327MB)
+   - `models/neck/Neck_DEiT_base_RMS_Boya1_Fold3_deit_base.pth` (327MB)
+   - `models/tail/Tail_DEiT_base_RMS_Boya2_Fold1_deit_base.pth` (327MB)
+
+2. **Her dosya için paylaşım ayarlarını yapın:**
+   - Dosyaya sağ tıklayın → "Paylaş"
+   - "Herkesi bağlantıyla erişebilir yap" seçeneğini aktif edin
+   - "Bağlantıyı kopyala" butonuna tıklayın
+
+3. **Dosya ID'sini alın:**
+   - Link formatı: `https://drive.google.com/file/d/FILE_ID/view`
+   - Örnek: `https://drive.google.com/file/d/1ABC123xyz456DEF789/view`
+   - `FILE_ID` kısmını kopyalayın: `1ABC123xyz456DEF789`
+
+### Adım 2: download_models.py Dosyasını Güncelleme
+
+`download_models.py` dosyasını açın ve `MODEL_FILES` dictionary'sini güncelleyin:
+
+```python
+MODEL_FILES = {
+    'models/boya2best.pt': '1ABC123xyz456DEF789',  # Google Drive File ID
+    'models/Boya2_Fold5_deit_base.pth': '2DEF456ghi789JKL012',
+    'models/head/Head_DEiT_base_RMS_Boya2_Fold3_deit_base.pth': '3GHI789jkl012MNO345',
+    'models/neck/Neck_DEiT_base_RMS_Boya1_Fold3_deit_base.pth': '4JKL012mno345PQR678',
+    'models/tail/Tail_DEiT_base_RMS_Boya2_Fold1_deit_base.pth': '5MNO345pqr678STU901',
+}
+```
+
+### Adım 3: Render Build Command'ı Güncelleme
+
+Render dashboard'da veya `render.yaml` dosyasında build command'ı güncelleyin:
+
+```bash
+pip install requests && python download_models.py && pip install -r requirements.txt
+```
+
+Veya `render.yaml` dosyasını güncelleyin:
+
+```yaml
+buildCommand: pip install requests && python download_models.py && pip install -r requirements.txt
+```
 
 ## Sorun Giderme
 
