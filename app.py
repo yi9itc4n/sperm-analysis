@@ -101,33 +101,42 @@ def load_yolo_model(model_name):
 # DeiT modelini yükle
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
-# Ana sınıflandırma modelini models klasöründe otomatik bul
-# head, neck, tail alt klasörlerindeki dosyaları hariç tut
+# Ana sınıflandırma modelini lazy loading ile yükle (sadece gerektiğinde)
 deit_model = None
 DEIT_MODEL_PATH = None
 
-models_dir = 'models'
-if os.path.exists(models_dir):
-    # Models klasöründeki tüm .pth dosyalarını bul (sadece root seviyesinde)
-    for file in os.listdir(models_dir):
-        if file.endswith('.pth') and os.path.isfile(os.path.join(models_dir, file)):
-            model_path = os.path.join(models_dir, file)
-            print(f"\nFound potential main classification model: {file}")
-            try:
-                deit_model = timm.create_model('deit_base_patch16_224', pretrained=False, num_classes=4)
-                deit_model.load_state_dict(torch.load(model_path, map_location=device))
-                deit_model.to(device)
-                deit_model.eval()
-                DEIT_MODEL_PATH = model_path
-                print(f"Successfully loaded main classification model: {file}")
-                break
-            except Exception as e:
-                print(f"Error loading {file} as main classification model: {str(e)}")
-                deit_model = None
-
-if deit_model is None:
+def load_main_classification_model():
+    """Ana sınıflandırma modelini lazy loading ile yükle"""
+    global deit_model, DEIT_MODEL_PATH
+    
+    if deit_model is not None:
+        return deit_model
+    
+    models_dir = 'models'
+    if os.path.exists(models_dir):
+        # Models klasöründeki tüm .pth dosyalarını bul (sadece root seviyesinde)
+        for file in os.listdir(models_dir):
+            if file.endswith('.pth') and os.path.isfile(os.path.join(models_dir, file)):
+                model_path = os.path.join(models_dir, file)
+                print(f"\nLoading main classification model: {file}")
+                try:
+                    deit_model = timm.create_model('deit_base_patch16_224', pretrained=False, num_classes=4)
+                    deit_model.load_state_dict(torch.load(model_path, map_location=device))
+                    deit_model.to(device)
+                    deit_model.eval()
+                    DEIT_MODEL_PATH = model_path
+                    print(f"Successfully loaded main classification model: {file}")
+                    return deit_model
+                except Exception as e:
+                    print(f"Error loading {file} as main classification model: {str(e)}")
+                    deit_model = None
+    
     print("\nWARNING: Main classification model (.pth file) not found in models directory.")
     print("Please ensure there is a .pth file in the models folder (not in head/neck/tail subfolders).")
+    return None
+
+# Model yükleme mesajı
+print("\n=== Models will be loaded on demand (lazy loading) to save memory ===")
 
 # Alt anomali modelleri için yapılandırma
 SUB_ANOMALY_MODELS = {
@@ -168,16 +177,25 @@ SUB_ANOMALY_MODELS = {
     }
 }
 
-# Alt anomali modellerini yükle
-print("\n=== Loading sub-anomaly models ===")
+# Alt anomali modellerini lazy loading ile yükle (sadece gerektiğinde)
+print("\n=== Sub-anomaly models will be loaded on demand (lazy loading) ===")
 sub_anomaly_models = {}
-for anomaly_type, config in SUB_ANOMALY_MODELS.items():
-    print(f"\nChecking {anomaly_type} model...")
+
+def load_sub_anomaly_model(anomaly_type):
+    """Alt anomali modelini lazy loading ile yükle"""
+    if anomaly_type in sub_anomaly_models:
+        return sub_anomaly_models[anomaly_type]
+    
+    if anomaly_type not in SUB_ANOMALY_MODELS:
+        return None
+    
+    config = SUB_ANOMALY_MODELS[anomaly_type]
     model_path = config['model_path']
+    
+    print(f"\nLoading {anomaly_type} model (lazy loading)...")
     print(f"Looking for model at: {model_path}")
     
     if os.path.exists(model_path):
-        print(f"Found model file. Loading...")
         try:
             model = timm.create_model('deit_base_patch16_224', pretrained=False, num_classes=config['num_classes'])
             model.load_state_dict(torch.load(model_path, map_location=device))
@@ -185,10 +203,13 @@ for anomaly_type, config in SUB_ANOMALY_MODELS.items():
             model.eval()
             sub_anomaly_models[anomaly_type] = model
             print(f"Successfully loaded {anomaly_type} model")
+            return model
         except Exception as e:
             print(f"Error loading model: {str(e)}")
+            return None
     else:
         print(f"Model file not found at {model_path}")
+        return None
 
 # Görüntü dönüşümleri
 transform = transforms.Compose([
@@ -216,13 +237,13 @@ def get_sub_anomaly(image, anomaly_type):
         print(f"No model configuration found for {anomaly_type}")
         return None, 0.0, None, 0.0
     
-    if anomaly_type not in sub_anomaly_models:
-        print(f"Model not loaded for {anomaly_type}")
-        print(f"Looking for model at: {SUB_ANOMALY_MODELS[anomaly_type]['model_path']}")
+    # Lazy loading: modeli gerektiğinde yükle
+    model = load_sub_anomaly_model(anomaly_type)
+    if model is None:
+        print(f"Model could not be loaded for {anomaly_type}")
         return None, 0.0, None, 0.0
     
     print(f"Model found for {anomaly_type}")
-    model = sub_anomaly_models[anomaly_type]
     classes = SUB_ANOMALY_MODELS[anomaly_type]['classes']
     
     # Görüntüyü dönüştür
@@ -267,12 +288,13 @@ def crop_and_classify_sperm(img, bbox):
     input_tensor = transform(pil_image)
     input_batch = input_tensor.unsqueeze(0).to(device)
     
-    # Ana modeli uygula
-    if deit_model is None:
+    # Ana modeli lazy loading ile yükle ve uygula
+    main_model = load_main_classification_model()
+    if main_model is None:
         raise ValueError("Ana sınıflandırma modeli yüklenemedi. Lütfen models klasöründe ana sınıflandırma modeli dosyasının olduğundan emin olun.")
     
     with torch.no_grad():
-        output = deit_model(input_batch)
+        output = main_model(input_batch)
         probabilities = torch.nn.functional.softmax(output[0], dim=0)
         
         # En yüksek iki olasılığı al
