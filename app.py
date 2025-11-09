@@ -699,6 +699,8 @@ def serve_crops(filename):
 @app.route('/upload', methods=['POST'])
 def upload_file():
     try:
+        print("\n=== Upload request received ===")
+        
         if 'files[]' not in request.files and 'file' not in request.files:
             return jsonify({'error': 'Dosya seçilmedi'}), 400
         
@@ -706,11 +708,15 @@ def upload_file():
         if not selected_model:
             return jsonify({'error': 'Model seçilmedi'}), 400
         
+        print(f"Selected model: {selected_model}")
+        
         # Birden fazla dosya desteği
         files = request.files.getlist('files[]') if 'files[]' in request.files else [request.files['file']]
         
         if not files or (len(files) == 1 and files[0].filename == ''):
             return jsonify({'error': 'Dosya seçilmedi'}), 400
+        
+        print(f"Number of files: {len(files)}")
         
         results = []
         
@@ -718,12 +724,28 @@ def upload_file():
             if file and file.filename and allowed_file(file.filename):
                 try:
                     filename = secure_filename(file.filename)
+                    file_size = len(file.read())
+                    file.seek(0)  # Reset file pointer
+                    
+                    print(f"Processing file: {filename}, size: {file_size / (1024*1024):.2f} MB")
+                    
+                    # Dosya boyutu kontrolü (16MB limit)
+                    if file_size > app.config['MAX_CONTENT_LENGTH']:
+                        results.append({
+                            'original_filename': filename,
+                            'success': False,
+                            'error': f'Dosya çok büyük: {file_size / (1024*1024):.2f} MB (max: {app.config["MAX_CONTENT_LENGTH"] / (1024*1024):.2f} MB)'
+                        })
+                        continue
+                    
                     # Benzersiz dosya adı oluştur (aynı isimli dosyalar için)
                     unique_id = str(uuid.uuid4())[:8]
                     base_name, ext = os.path.splitext(filename)
                     unique_filename = f"{base_name}_{unique_id}{ext}"
                     filepath = os.path.join(app.config['UPLOAD_FOLDER'], unique_filename)
                     file.save(filepath)
+                    
+                    print(f"File saved to: {filepath}")
                     
                     try:
                         print(f"\nProcessing {filename} with model: {selected_model}")
@@ -795,11 +817,23 @@ def upload_file():
         
     except Exception as e:
         import traceback
-        print("\nUnexpected error in upload_file:")
-        print(traceback.format_exc())
+        error_traceback = traceback.format_exc()
+        print("\n=== Unexpected error in upload_file ===")
+        print(error_traceback)
+        print("========================================\n")
+        
+        # Kullanıcıya daha anlaşılır hata mesajı döndür
+        error_message = str(e)
+        if 'timeout' in error_message.lower() or 'timeout' in error_traceback.lower():
+            error_message = 'İşlem zaman aşımına uğradı. Lütfen daha küçük bir görüntü deneyin veya tekrar deneyin.'
+        elif 'memory' in error_message.lower() or 'memory' in error_traceback.lower():
+            error_message = 'Bellek yetersiz. Lütfen daha küçük bir görüntü deneyin.'
+        elif 'worker' in error_message.lower() or 'worker' in error_traceback.lower():
+            error_message = 'Sunucu yanıt vermiyor. Lütfen birkaç saniye bekleyip tekrar deneyin.'
+        
         return jsonify({
-            'error': f'Beklenmeyen hata: {str(e)}',
-            'traceback': traceback.format_exc()
+            'error': f'İşlem hatası: {error_message}',
+            'details': str(e) if len(str(e)) < 200 else str(e)[:200] + '...'
         }), 500
 
 @app.route('/get_all_results', methods=['GET'])
