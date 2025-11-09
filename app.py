@@ -200,9 +200,6 @@ def check_models_on_startup():
     
     print("=== Model check completed ===\n")
 
-# Startup kontrolünü çalıştır
-check_models_on_startup()
-
 # Alt anomali modelleri için yapılandırma
 SUB_ANOMALY_MODELS = {
     'Head Anomalies': {
@@ -245,6 +242,9 @@ SUB_ANOMALY_MODELS = {
 # Alt anomali modellerini lazy loading ile yükle (sadece gerektiğinde)
 print("\n=== Sub-anomaly models will be loaded on demand (lazy loading) ===")
 sub_anomaly_models = {}
+
+# Startup kontrolünü çalıştır (SUB_ANOMALY_MODELS tanımlandıktan sonra)
+check_models_on_startup()
 
 def load_sub_anomaly_model(anomaly_type):
     """Alt anomali modelini lazy loading ile yükle"""
