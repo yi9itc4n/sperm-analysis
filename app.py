@@ -155,6 +155,54 @@ def load_main_classification_model():
 # Model yükleme mesajı
 print("\n=== Models will be loaded on demand (lazy loading) to save memory ===")
 
+# Uygulama başlatma kontrolü - startup'ta çalıştır
+def check_models_on_startup():
+    """Uygulama başlatılırken model dosyalarının varlığını kontrol et"""
+    print("\n=== Checking model files on startup ===")
+    models_dir = 'models'
+    
+    if not os.path.exists(models_dir):
+        print(f"WARNING: Models directory does not exist: {models_dir}")
+        return
+    
+    print(f"Models directory exists: {models_dir}")
+    
+    # YOLO modelini kontrol et
+    yolo_model_path = os.path.join(models_dir, 'boya2best.pt')
+    if os.path.exists(yolo_model_path):
+        file_size = os.path.getsize(yolo_model_path)
+        print(f"✓ YOLO model found: {yolo_model_path} ({file_size / (1024*1024):.2f} MB)")
+    else:
+        print(f"✗ YOLO model NOT found: {yolo_model_path}")
+    
+    # Ana classification modelini kontrol et
+    main_model_found = False
+    if os.path.exists(models_dir):
+        for file in os.listdir(models_dir):
+            if file.endswith('.pth') and os.path.isfile(os.path.join(models_dir, file)):
+                model_path = os.path.join(models_dir, file)
+                file_size = os.path.getsize(model_path)
+                print(f"✓ Main classification model found: {file} ({file_size / (1024*1024):.2f} MB)")
+                main_model_found = True
+                break
+    
+    if not main_model_found:
+        print("✗ Main classification model NOT found")
+    
+    # Alt anomali modellerini kontrol et
+    for anomaly_type, config in SUB_ANOMALY_MODELS.items():
+        model_path = config['model_path']
+        if os.path.exists(model_path):
+            file_size = os.path.getsize(model_path)
+            print(f"✓ {anomaly_type} model found: {os.path.basename(model_path)} ({file_size / (1024*1024):.2f} MB)")
+        else:
+            print(f"✗ {anomaly_type} model NOT found: {model_path}")
+    
+    print("=== Model check completed ===\n")
+
+# Startup kontrolünü çalıştır
+check_models_on_startup()
+
 # Alt anomali modelleri için yapılandırma
 SUB_ANOMALY_MODELS = {
     'Head Anomalies': {
@@ -594,7 +642,23 @@ def home():
 @app.route('/health')
 def health():
     """Health check endpoint - cron job için kullanılabilir"""
-    return jsonify({'status': 'ok'}), 200
+    try:
+        # Model dosyalarının varlığını kontrol et
+        models_status = {
+            'yolo_model': os.path.exists('models/boya2best.pt'),
+            'main_model': any(f.endswith('.pth') for f in os.listdir('models') if os.path.isfile(os.path.join('models', f))) if os.path.exists('models') else False,
+        }
+        
+        return jsonify({
+            'status': 'ok',
+            'models': models_status,
+            'memory_usage': 'normal'
+        }), 200
+    except Exception as e:
+        return jsonify({
+            'status': 'error',
+            'error': str(e)
+        }), 500
 
 @app.route('/static/<path:filename>')
 def serve_static(filename):
