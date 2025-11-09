@@ -543,12 +543,26 @@ def process_image(image_path, yolo_model):
     if original_img is None:
         raise ValueError(f"Image could not be loaded from path: {image_path}")
 
+    # Görüntü boyutunu kontrol et ve gerekirse küçült (memory tasarrufu için)
+    max_dimension = 1024  # Maksimum boyut
+    height, width = original_img.shape[:2]
+    print(f"Original image size: {width}x{height}")
+    
+    if max(height, width) > max_dimension:
+        scale = max_dimension / max(height, width)
+        new_width = int(width * scale)
+        new_height = int(height * scale)
+        print(f"Resizing image to {new_width}x{new_height} for memory optimization")
+        original_img = cv2.resize(original_img, (new_width, new_height), interpolation=cv2.INTER_AREA)
+        print(f"Resized image size: {original_img.shape}")
+
     # YOLO modelini çalıştır - timeout ve memory optimizasyonu için
     print(f"Running YOLO inference on image: {image_path}")
     print(f"Image size: {original_img.shape}")
     try:
-        # YOLO inference - verbose=False ile log azalt
-        results = yolo_model(original_img, verbose=False)
+        # YOLO inference - verbose=False ile log azalt, imgsz küçült
+        # imgsz=640: daha küçük input size = daha az memory
+        results = yolo_model(original_img, verbose=False, imgsz=640)
         print(f"YOLO inference completed, found {len(results[0].boxes)} detections")
     except Exception as e:
         print(f"Error during YOLO inference: {str(e)}")
