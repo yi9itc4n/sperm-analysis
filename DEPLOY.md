@@ -77,15 +77,20 @@ git push origin main
    - **Environment**: `Python 3`
    - **Build Command**: 
      ```bash
-     pip install git-lfs && git lfs install && git lfs pull && pip install -r requirements.txt
+     pip install requests && python download_models.py && pip install -r requirements.txt
      ```
+     (Model dosyaları Google Drive'dan indirilecek)
    - **Start Command**: 
      ```bash
      gunicorn app:app
      ```
    - **Instance Type**: 
-     - **Free Tier**: Ücretsiz ama sınırlı (512MB RAM, 0.5 CPU)
-     - **Starter ($7/ay)**: 512MB RAM, 0.5 CPU - **ÖNERİLEN** (modeller için yeterli)
+     - **Free Tier**: Ücretsiz - **ÖNERİLEN (ÜCRETSİZ)** ✅
+       - 512MB RAM, 0.5 CPU
+       - 15 dakika kullanılmazsa uyku moduna geçer (ilk istek yavaş olabilir)
+       - Aylık 750 saat ücretsiz
+       - Model dosyaları için yeterli (disk alanı sınırı yok)
+     - **Starter ($7/ay)**: 512MB RAM, 0.5 CPU - Uyku modu yok, daha hızlı
      - **Standard ($25/ay)**: 2GB RAM, 1 CPU - Daha iyi performans için
 
 4. **Environment Variables Ekleyin**
@@ -104,11 +109,19 @@ Build işlemi sırasında:
 
 **Build loglarını** dikkatle izleyin. Eğer model dosyaları indirilemezse, build başarısız olabilir.
 
-### Notlar:
-- Render ücretsiz tier'da uygulama 15 dakika kullanılmazsa uyku moduna geçer
-- İlk uyanma biraz zaman alabilir (cold start)
-- Model dosyaları her build'de yeniden indirilir (build süresi uzar)
-- **Önerilen**: Starter plan ($7/ay) kullanın - daha stabil ve hızlı
+### Notlar (Free Tier):
+- ✅ **ÜCRETSİZ** - Hiçbir ücret ödemenize gerek yok!
+- ⚠️ Uygulama 15 dakika kullanılmazsa uyku moduna geçer
+- ⚠️ İlk uyanma 30-60 saniye sürebilir (cold start - model yükleme)
+- ✅ Model dosyaları her build'de yeniden indirilir (build süresi 15-25 dakika)
+- ✅ Aylık 750 saat ücretsiz (ayda 31 gün × 24 saat = 744 saat, yeterli!)
+- ✅ Disk alanı sınırı yok (1.2GB modeller için yeterli)
+
+**Free Tier Yeterli mi?**
+- ✅ Evet! Model dosyaları için yeterli disk alanı var
+- ✅ RAM yeterli (512MB, modeller yüklendikten sonra kullanılır)
+- ⚠️ İlk istek yavaş olabilir (uyku modundan uyanma + model yükleme)
+- ✅ Sonraki istekler normal hızda olacak
 
 ## 2. Railway (Modern ve Hızlı)
 
@@ -238,9 +251,10 @@ pip install git-lfs && git lfs install && git lfs pull && pip install -r require
 **Sorun**: "Out of memory" veya "Killed" hatası alıyorsunuz.
 
 **Çözüm**:
-- Free tier yeterli olmayabilir (512MB RAM)
-- **Starter plan ($7/ay)** kullanın - 512MB RAM
-- **Standard plan ($25/ay)** kullanın - 2GB RAM (daha iyi)
+- Free tier genellikle yeterli (512MB RAM)
+- Eğer yeterli değilse, model yükleme stratejisini optimize edin
+- Sadece gerektiğinde modelleri yükleyin (lazy loading)
+- **Son çare**: Starter plan ($7/ay) - ama genellikle gerekmez
 
 ### Port Hatası
 
@@ -251,15 +265,23 @@ pip install git-lfs && git lfs install && git lfs pull && pip install -r require
 - `app.py` dosyasında zaten `os.environ.get('PORT', 5000)` kullanılıyor
 - Ekstra bir şey yapmanıza gerek yok
 
-### Uygulama Uyku Modunda
+### Uygulama Uyku Modunda (Free Tier)
 
-**Sorun**: İlk istek çok yavaş (15+ saniye).
+**Sorun**: İlk istek çok yavaş (30-60 saniye).
 
 **Neden**: Free tier'da 15 dakika kullanılmazsa uyku moduna geçer.
 
-**Çözüm**:
-- Starter plan ($7/ay) kullanın - uyku modu yok
-- Veya ücretsiz cron job ile her 10 dakikada bir ping atın
+**Ücretsiz Çözümler**:
+1. **Cron Job ile Ping** (Ücretsiz) - **ÖNERİLEN**:
+   - Render Dashboard'da "New +" → "Cron Job" seçin
+   - **Schedule**: `*/10 * * * *` (her 10 dakikada bir)
+   - **Command**: `curl https://your-app-name.onrender.com/health` (uygulama URL'iniz)
+   - Veya: `curl https://your-app-name.onrender.com/` (ana sayfa da çalışır)
+   - Böylece uyku moduna geçmez, her zaman hazır olur!
+   
+2. **Kabul Edin**: İlk istek yavaş olabilir (30-60 saniye), sonraki istekler hızlı
+
+3. **Ücretli Alternatif**: Starter plan ($7/ay) - uyku modu yok (gerekmez, cron job yeterli)
 
 ## Hızlı Kontrol Listesi
 

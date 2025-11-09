@@ -552,6 +552,11 @@ def process_image(image_path, yolo_model):
 def home():
     return render_template('index.html')
 
+@app.route('/health')
+def health():
+    """Health check endpoint - cron job için kullanılabilir"""
+    return jsonify({'status': 'ok'}), 200
+
 @app.route('/static/<path:filename>')
 def serve_static(filename):
     return send_from_directory('static', filename)
