@@ -543,8 +543,18 @@ def process_image(image_path, yolo_model):
     if original_img is None:
         raise ValueError(f"Image could not be loaded from path: {image_path}")
 
-    # YOLO modelini çalıştır
-    results = yolo_model(original_img)
+    # YOLO modelini çalıştır - timeout ve memory optimizasyonu için
+    print(f"Running YOLO inference on image: {image_path}")
+    print(f"Image size: {original_img.shape}")
+    try:
+        # YOLO inference - verbose=False ile log azalt
+        results = yolo_model(original_img, verbose=False)
+        print(f"YOLO inference completed, found {len(results[0].boxes)} detections")
+    except Exception as e:
+        print(f"Error during YOLO inference: {str(e)}")
+        import traceback
+        print(traceback.format_exc())
+        raise
     result = results[0]
     
     # Annotated görüntü için kopya oluştur

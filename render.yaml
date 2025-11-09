@@ -4,7 +4,7 @@ services:
     env: python
     # Model dosyalarını cloud storage'dan indir ve paketleri yükle
     buildCommand: pip install gdown && python download_models.py && pip install -r requirements.txt
-    startCommand: gunicorn app:app
+    startCommand: gunicorn app:app --timeout 300 --workers 1 --threads 1 --worker-class sync --max-requests 1000 --max-requests-jitter 100
     envVars:
       - key: PYTHON_VERSION
         value: 3.11.0
