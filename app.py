@@ -85,16 +85,33 @@ def load_yolo_model(model_name):
     # İstenen model yüklü değilse yükle
     if YOLO_MODELS[model_name] is None:
         model_path = os.path.join('models', model_name)
-        if os.path.exists(model_path):
-            print(f"\nLoading YOLO model: {model_name}")
-            try:
-                YOLO_MODELS[model_name] = YOLO(model_path)
-                print(f"Successfully loaded {model_name}")
-            except Exception as e:
-                print(f"Error loading model {model_name}: {str(e)}")
-                raise
-        else:
+        # Mutlak yol kullan
+        model_path = os.path.abspath(model_path)
+        
+        print(f"\nLoading YOLO model: {model_name}")
+        print(f"Model path: {model_path}")
+        print(f"Model exists: {os.path.exists(model_path)}")
+        
+        if not os.path.exists(model_path):
             raise ValueError(f"Model dosyası bulunamadı: {model_path}")
+        
+        # Dosya boyutunu kontrol et
+        file_size = os.path.getsize(model_path)
+        print(f"Model file size: {file_size / (1024*1024):.2f} MB")
+        
+        if file_size < 1000:  # 1KB'den küçükse hata
+            raise ValueError(f"Model dosyası çok küçük veya bozuk: {model_path} ({file_size} bytes)")
+        
+        try:
+            # YOLO modelini yükle - mutlak yol kullan
+            YOLO_MODELS[model_name] = YOLO(model_path)
+            print(f"Successfully loaded {model_name}")
+        except Exception as e:
+            import traceback
+            error_msg = f"Error loading YOLO model {model_name} from {model_path}: {str(e)}"
+            print(error_msg)
+            print(traceback.format_exc())
+            raise ValueError(error_msg) from e
     
     return YOLO_MODELS[model_name]
 
@@ -622,8 +639,22 @@ def upload_file():
                     
                     try:
                         print(f"\nProcessing {filename} with model: {selected_model}")
+                        print(f"Available models: {list(YOLO_MODELS.keys())}")
+                        
                         # Seçilen modeli yükle
-                        yolo_model = load_yolo_model(selected_model)
+                        try:
+                            yolo_model = load_yolo_model(selected_model)
+                        except Exception as model_error:
+                            import traceback
+                            error_details = f"Model yükleme hatası: {str(model_error)}\n{traceback.format_exc()}"
+                            print(error_details)
+                            results.append({
+                                'original_filename': filename,
+                                'success': False,
+                                'error': f'Model yüklenemedi: {str(model_error)}'
+                            })
+                            continue
+                        
                         result_filename, detections = process_image(filepath, yolo_model)
                         
                         # Sonuçları hafızaya kaydet
