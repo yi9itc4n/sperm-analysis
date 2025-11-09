@@ -19,3 +19,11 @@ __pycache__/
 .DS_Store
 *.log
 
+# Model dosyaları GitHub LFS budget aşıldığı için Git'ten çıkarıldı
+# Build sırasında cloud storage'dan indirilecek
+models/*.pt
+models/*.pth
+models/head/*.pth
+models/neck/*.pth
+models/tail/*.pth
+
