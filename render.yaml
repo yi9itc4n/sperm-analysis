@@ -3,7 +3,7 @@ services:
     name: sperm-analysis
     env: python
     # Model dosyalarını cloud storage'dan indir ve paketleri yükle
-    buildCommand: pip install requests && python download_models.py && pip install -r requirements.txt
+    buildCommand: pip install gdown && python download_models.py && pip install -r requirements.txt
     startCommand: gunicorn app:app
     envVars:
       - key: PYTHON_VERSION

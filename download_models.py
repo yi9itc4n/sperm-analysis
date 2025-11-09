@@ -2,15 +2,12 @@
 """
 Model dosyalarını Google Drive'dan indiren script.
 Render build sırasında otomatik olarak çalıştırılacak.
+gdown kütüphanesi kullanılıyor - Google Drive dosyalarını indirmek için en güvenilir yöntem.
 """
 
 import os
-import requests
-import re
-from pathlib import Path
-
-# Google Drive klasör ID'si
-GOOGLE_DRIVE_FOLDER_ID = '1eHxbcWXF-iSXn8iwSJKOCaGnYwL5ofdB'
+import subprocess
+import sys
 
 # Model dosyalarının Google Drive File ID'leri
 MODEL_FILES = {
@@ -21,23 +18,23 @@ MODEL_FILES = {
     'models/tail/Tail_DEiT_base_RMS_Boya2_Fold1_deit_base.pth': '1-dfZLZXFk53nf7dxu5R7wZZgq4S4vctP',
 }
 
-def extract_file_id_from_url(url):
-    """Google Drive URL'den File ID çıkar"""
-    # Farklı URL formatlarını destekle
-    patterns = [
-        r'/file/d/([a-zA-Z0-9_-]+)',
-        r'id=([a-zA-Z0-9_-]+)',
-        r'folders/([a-zA-Z0-9_-]+)',
-    ]
-    
-    for pattern in patterns:
-        match = re.search(pattern, url)
-        if match:
-            return match.group(1)
-    return None
+def install_gdown():
+    """gdown kütüphanesini yükle"""
+    try:
+        import gdown
+        return True
+    except ImportError:
+        print("gdown kütüphanesi yükleniyor...")
+        try:
+            subprocess.check_call([sys.executable, '-m', 'pip', 'install', 'gdown', '--quiet'])
+            import gdown
+            return True
+        except Exception as e:
+            print(f"  ✗ gdown yüklenemedi: {str(e)}")
+            return False
 
-def download_file_from_drive(file_id, output_path, retry=3):
-    """Google Drive'dan dosya indir (büyük dosyalar için)"""
+def download_file_with_gdown(file_id, output_path, retry=3):
+    """gdown kullanarak Google Drive'dan dosya indir"""
     if not file_id:
         print(f"  ✗ File ID bulunamadı: {output_path}")
         return False
@@ -55,93 +52,51 @@ def download_file_from_drive(file_id, output_path, retry=3):
             return True
     
     try:
-        session = requests.Session()
-        
-        # İlk istek - büyük dosyalar için onay sayfası olabilir
-        url = f"https://drive.google.com/uc?export=download&id={file_id}"
-        response = session.get(url, stream=True, timeout=300, allow_redirects=False)
-        
-        # Büyük dosyalar için Google Drive onay sayfası gösterir
-        # HTML içeriğini kontrol et
-        if response.status_code == 200:
-            content = response.text
-            # Virus scan warning veya confirm sayfası kontrolü
-            if 'virus scan warning' in content.lower() or 'download anyway' in content.lower() or 'confirm' in content.lower():
-                # Onay linkini bul - farklı formatları dene
-                patterns = [
-                    r'href="(/uc\?export=download[^"]+)"',
-                    r'href="(/file/d/[^"]+/uc\?export=download[^"]+)"',
-                    r'action="(/uc\?export=download[^"]+)"',
-                ]
-                
-                confirm_url = None
-                for pattern in patterns:
-                    match = re.search(pattern, content)
-                    if match:
-                        confirm_url = 'https://drive.google.com' + match.group(1)
-                        break
-                
-                if not confirm_url:
-                    # Alternatif: direkt confirm parametresi ile dene
-                    confirm_url = f"https://drive.google.com/uc?export=download&confirm=t&id={file_id}"
-                
-                print(f"  Büyük dosya tespit edildi, onay sayfası atlanıyor...")
-                response = session.get(confirm_url, stream=True, timeout=300)
-            else:
-                # Küçük dosya, direkt indir
-                response = session.get(url, stream=True, timeout=300)
-        
-        # Dosya boyutunu kontrol et
-        content_length = response.headers.get('Content-Length')
-        if content_length:
-            total_size = int(content_length)
-            print(f"  Toplam boyut: {total_size / (1024*1024):.2f} MB")
-        else:
-            print(f"  Dosya boyutu bilinmiyor, indiriliyor...")
-        
-        response.raise_for_status()
+        import gdown
         
         # Klasörü oluştur
         os.makedirs(os.path.dirname(output_path), exist_ok=True)
         
-        # Dosyayı kaydet
-        downloaded_size = 0
-        with open(output_path, 'wb') as f:
-            for chunk in response.iter_content(chunk_size=8192):
-                if chunk:
-                    f.write(chunk)
-                    downloaded_size += len(chunk)
-                    if downloaded_size % (10 * 1024 * 1024) == 0:  # Her 10MB'da bir
-                        print(f"  İndirildi: {downloaded_size / (1024*1024):.2f} MB")
+        # Google Drive URL'i oluştur
+        url = f"https://drive.google.com/uc?id={file_id}"
         
-        final_size = os.path.getsize(output_path)
-        if final_size < 1000:  # 1KB'den küçükse hata
-            print(f"  ✗ Dosya çok küçük, indirme başarısız olabilir: {final_size} bytes")
+        # gdown ile indir
+        # fuzzy=True: dosya adını otomatik algıla
+        # quiet=False: progress göster
+        # resume=True: kısmi indirmeleri devam ettir
+        gdown.download(url, output_path, quiet=False, fuzzy=True, resume=True)
+        
+        # Dosya boyutunu kontrol et
+        if os.path.exists(output_path):
+            final_size = os.path.getsize(output_path)
+            if final_size < 1000:  # 1KB'den küçükse hata
+                print(f"  ✗ Dosya çok küçük, indirme başarısız olabilir: {final_size} bytes")
+                return False
+            
+            print(f"  ✓ Başarıyla indirildi: {output_path} ({final_size / (1024*1024):.2f} MB)")
+            return True
+        else:
+            print(f"  ✗ Dosya oluşturulamadı: {output_path}")
             return False
-        
-        print(f"  ✓ Başarıyla indirildi: {output_path} ({final_size / (1024*1024):.2f} MB)")
-        return True
         
     except Exception as e:
         print(f"  ✗ Hata: {str(e)}")
         if retry > 0:
             print(f"  Tekrar deneniyor... ({retry} deneme kaldı)")
-            return download_file_from_drive(file_id, output_path, retry - 1)
+            return download_file_with_gdown(file_id, output_path, retry - 1)
         return False
-
-def get_files_from_folder(folder_id):
-    """Google Drive klasöründeki dosyaları listele (basit yöntem)"""
-    # Not: Bu yöntem Google Drive API gerektirir
-    # Şimdilik manuel File ID girişi kullanacağız
-    print("Klasör içindeki dosyaları listelemek için Google Drive API gerekiyor.")
-    print("Lütfen her dosya için ayrı paylaşım linki alın.")
-    return []
 
 def main():
     """Tüm model dosyalarını indir"""
     print("=" * 60)
     print("Model Dosyaları İndiriliyor...")
     print("=" * 60)
+    
+    # gdown'ı yükle
+    if not install_gdown():
+        print("\n✗ gdown kütüphanesi yüklenemedi!")
+        print("Alternatif olarak requests ile deneyebilirsiniz.")
+        return 1
     
     # File ID'lerin ayarlandığını kontrol et
     missing_files = []
@@ -159,7 +114,7 @@ def main():
     
     success_count = 0
     for file_path, file_id in MODEL_FILES.items():
-        if download_file_from_drive(file_id, file_path):
+        if download_file_with_gdown(file_id, file_path):
             success_count += 1
     
     print("=" * 60)
@@ -171,8 +126,8 @@ def main():
         return 0
     else:
         print("✗ Bazı dosyalar indirilemedi!")
+        print("\n💡 İpucu: Google Drive dosyalarının 'Herkesi bağlantıyla erişebilir yap' olarak paylaşıldığından emin olun.")
         return 1
 
 if __name__ == '__main__':
-    import sys
     sys.exit(main())
