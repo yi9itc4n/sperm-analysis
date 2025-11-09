@@ -42,38 +42,62 @@ def download_file_from_drive(file_id, output_path, retry=3):
         print(f"  ✗ File ID bulunamadı: {output_path}")
         return False
     
-    # Google Drive direkt indirme URL'i
-    url = f"https://drive.google.com/uc?export=download&id={file_id}"
-    
     print(f"İndiriliyor: {output_path}")
     print(f"  File ID: {file_id}")
     
-    # Dosya zaten varsa atla
+    # Dosya zaten varsa ve yeterli boyuttaysa atla
     if os.path.exists(output_path):
         file_size = os.path.getsize(output_path)
-        if file_size > 1000:  # 1KB'den büyükse gerçek dosya
+        # 1MB'den büyükse gerçek dosya (küçük dosyalar için 100KB yeterli)
+        min_size = 100 * 1024 if 'boya2best.pt' in output_path else 1024 * 1024
+        if file_size > min_size:
             print(f"  ✓ Dosya zaten mevcut: {output_path} ({file_size / (1024*1024):.2f} MB)")
             return True
     
     try:
-        # İlk istek - büyük dosyalar için onay sayfası olabilir
         session = requests.Session()
-        response = session.get(url, stream=True, timeout=300)
+        
+        # İlk istek - büyük dosyalar için onay sayfası olabilir
+        url = f"https://drive.google.com/uc?export=download&id={file_id}"
+        response = session.get(url, stream=True, timeout=300, allow_redirects=False)
         
         # Büyük dosyalar için Google Drive onay sayfası gösterir
-        # "virus scan warning" sayfasını atla
-        if 'virus scan warning' in response.text.lower() or 'confirm' in response.text.lower():
-            # Onay linkini bul
-            confirm_match = re.search(r'href="(/uc\?export=download[^"]+)"', response.text)
-            if confirm_match:
-                confirm_url = 'https://drive.google.com' + confirm_match.group(1)
+        # HTML içeriğini kontrol et
+        if response.status_code == 200:
+            content = response.text
+            # Virus scan warning veya confirm sayfası kontrolü
+            if 'virus scan warning' in content.lower() or 'download anyway' in content.lower() or 'confirm' in content.lower():
+                # Onay linkini bul - farklı formatları dene
+                patterns = [
+                    r'href="(/uc\?export=download[^"]+)"',
+                    r'href="(/file/d/[^"]+/uc\?export=download[^"]+)"',
+                    r'action="(/uc\?export=download[^"]+)"',
+                ]
+                
+                confirm_url = None
+                for pattern in patterns:
+                    match = re.search(pattern, content)
+                    if match:
+                        confirm_url = 'https://drive.google.com' + match.group(1)
+                        break
+                
+                if not confirm_url:
+                    # Alternatif: direkt confirm parametresi ile dene
+                    confirm_url = f"https://drive.google.com/uc?export=download&confirm=t&id={file_id}"
+                
+                print(f"  Büyük dosya tespit edildi, onay sayfası atlanıyor...")
                 response = session.get(confirm_url, stream=True, timeout=300)
+            else:
+                # Küçük dosya, direkt indir
+                response = session.get(url, stream=True, timeout=300)
         
         # Dosya boyutunu kontrol et
         content_length = response.headers.get('Content-Length')
         if content_length:
             total_size = int(content_length)
             print(f"  Toplam boyut: {total_size / (1024*1024):.2f} MB")
+        else:
+            print(f"  Dosya boyutu bilinmiyor, indiriliyor...")
         
         response.raise_for_status()
         
@@ -90,7 +114,12 @@ def download_file_from_drive(file_id, output_path, retry=3):
                     if downloaded_size % (10 * 1024 * 1024) == 0:  # Her 10MB'da bir
                         print(f"  İndirildi: {downloaded_size / (1024*1024):.2f} MB")
         
-        print(f"  ✓ Başarıyla indirildi: {output_path} ({downloaded_size / (1024*1024):.2f} MB)")
+        final_size = os.path.getsize(output_path)
+        if final_size < 1000:  # 1KB'den küçükse hata
+            print(f"  ✗ Dosya çok küçük, indirme başarısız olabilir: {final_size} bytes")
+            return False
+        
+        print(f"  ✓ Başarıyla indirildi: {output_path} ({final_size / (1024*1024):.2f} MB)")
         return True
         
     except Exception as e:
